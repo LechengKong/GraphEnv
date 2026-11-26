@@ -1,0 +1,10 @@
+services:
+  main:
+    environment:
+      PROBE_URL: http://oracle:8080
+    depends_on:
+      oracle:
+        condition: service_healthy
+  oracle:
+    build:
+      context: ./oracle

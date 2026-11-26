@@ -1,0 +1,60 @@
+#!/usr/bin/env python3
+"""probe - command-line client for the system under investigation.
+
+  probe status                      start item, budgets, calls used
+  probe neighbors ITEM              items linked to ITEM (first lookup of an item uses budget)
+  probe evaluate ITEM [ITEM ...]    score a selection (counts against the budget)
+  probe evaluate -                  read the selection from stdin, one ID per line
+  probe submit ITEM [ITEM ...]      submit the final selection (only once)
+  probe submit -                    read the selection from stdin
+
+All output is JSON on stdout. Errors go to stderr with exit code 1.
+"""
+import json
+import os
+import sys
+import urllib.error
+import urllib.request
+
+URL = os.environ.get("PROBE_URL", "http://oracle:8080")
+
+
+def call(path, body):
+    req = urllib.request.Request(URL + path, data=json.dumps(body).encode(),
+                                 headers={"Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=60) as r:
+            return json.load(r)
+    except urllib.error.HTTPError as e:
+        sys.stderr.write(json.load(e).get("error", "error") + "\n")
+        sys.exit(1)
+    except urllib.error.URLError as e:
+        sys.stderr.write(f"cannot reach service: {e.reason}\n")
+        sys.exit(1)
+
+
+def items(args):
+    if args == ["-"]:
+        return [line.strip() for line in sys.stdin if line.strip()]
+    return args
+
+
+def main(argv):
+    if not argv or argv[0] in ("-h", "--help", "help"):
+        print(__doc__.strip())
+        return
+    cmd, rest = argv[0], argv[1:]
+    if cmd == "status":
+        out = call("/status", {})
+    elif cmd == "neighbors" and len(rest) == 1:
+        out = call("/neighbors", {"node": rest[0]})
+    elif cmd in ("evaluate", "submit") and rest:
+        out = call("/" + cmd, {"nodes": items(rest)})
+    else:
+        sys.stderr.write("usage: see `probe --help`\n")
+        sys.exit(2)
+    print(json.dumps(out))
+
+
+if __name__ == "__main__":
+    main(sys.argv[1:])
